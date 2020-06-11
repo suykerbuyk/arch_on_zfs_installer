@@ -33,6 +33,8 @@ jfsutils
 lftp
 linux-atm
 linux-firmware
+linux-headers
+archzfs-linux
 lsscsi
 lvm2
 man-db
@@ -72,6 +74,7 @@ usb_modeswitch
 usbutils
 vi
 vim-minimal
+neovim
 vpnc
 wget
 wireless-regdb
