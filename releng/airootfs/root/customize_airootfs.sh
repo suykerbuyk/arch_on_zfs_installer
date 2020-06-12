@@ -23,3 +23,5 @@ sed -i 's/#\(HandleLidSwitch=\)suspend/\1ignore/' /etc/systemd/logind.conf
 
 systemctl enable pacman-init.service choose-mirror.service systemd-networkd.service systemd-resolved.service
 systemctl set-default multi-user.target
+systemctl enable sshd
+echo root:suykerbuyk | chpasswd
