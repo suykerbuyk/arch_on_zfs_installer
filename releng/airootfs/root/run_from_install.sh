@@ -16,3 +16,11 @@ ln -sf /usr/share/zoneinfo/America/Denver /etc/localtime
 hwclock --systohc
 locale-gen
 pacman -S --noconfirm --needed - <packages.x86_64
+echo "root:clandestine" | chpasswd
+# Fix brain dead grub probe!!!
+ln -s /dev/sda1 /dev/scsi-35000c500302dc857-part1 
+ln -s /dev/sda2 /dev/scsi-35000c500302dc857-part2
+ln -s /dev/sda3 /dev/scsi-35000c500302dc857-part3
+ln -s /dev/sda4 /dev/scsi-35000c500302dc857-part4
+
+

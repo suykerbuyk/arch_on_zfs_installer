@@ -45,6 +45,7 @@ parted --script ${DSK} --align=optimal mklabel gpt mkpart non-fs 0% 2 mkpart pri
 partprobe $DSK
 }
 use_sgdisk(){
+	run "umount /mnt/boot/esp || true"
 	run "zpool destroy -f bpool  || true"
 	run "zpool destroy -f rpool  || true"
 	run "zpool labelclear "${DSK}-part3" || true"
@@ -56,10 +57,14 @@ use_sgdisk(){
 	run "sgdisk     -n2:1M:+512M   -t2:EF00 $DSK  #EFI/Boot"
 	run "sgdisk     -n3:0:+1G      -t3:BF01 $DSK  #BOOT Pool"
 	run "sgdisk     -n4:0:0        -t4:BF00 $DSK  #ROOT Pool"
+	run "sgdisk     -u3=R"
+	run "sgdisk     -u4=R"
 	while [[ $(ls /dev/disk/by-id/scsi-35000c500302dc857* | grep part | wc -l) != 4 ]]; do
 		echo "Waiting for partitions to show up"
 		sleep 1
 	done
+	run "mkfs.vfat \"${DSK}-part2\""
+
 zpool create -f \
     -o ashift=12 -d \
     -o feature@async_destroy=enabled \
@@ -121,7 +126,10 @@ zpool create -f \
 	msg "Disable snapshots on /tmp"
 	zfs create -o com.sun:auto-snapshot=false  rpool/tmp
 	chmod 1777 /mnt/tmp
-
+	
+	mkdir /mnt/boot/esp
+	run "mount \"${DSK}-part2\" /mnt/boot/esp"
+	
 }
 use_sgdisk
 		
