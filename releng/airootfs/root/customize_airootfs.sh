@@ -12,9 +12,13 @@ cp -aT /etc/skel/ /root/
 chmod 700 /root
 # unset the root password
 passwd -d root
+chmod 755 /etc/ssh
+chmod -R -700 /etc/ssh/authorized_keys
+chown -R -700 /etc/ssh/authorized_keys
 
-sed -i 's/#\(PermitRootLogin \).\+/\1yes/' /etc/ssh/sshd_config
-sed -i 's/#\(ChallengeResonseAuthentication \).\+/\1yes/' /etc/ssh/sshd_config
+
+#sed -i 's/#\(PermitRootLogin \).\+/\1yes/' /etc/ssh/sshd_config
+#sed -i 's/ChallengeResponseAuthentication.*/ChallengeResponseAuthentication yes/g' /etc/ssh/sshd_config
 sed -i "s/#Server/Server/g" /etc/pacman.d/mirrorlist
 sed -i 's/#\(Storage=\)auto/\1volatile/' /etc/systemd/journald.conf
 
