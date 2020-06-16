@@ -11,7 +11,6 @@ partprobe $DSK
 SYS_BASE_NAME="mgmt"
 
 
-
 # Helps with debugging.
 GO_SLOW=0
 DRY_RUN=0
@@ -126,7 +125,6 @@ zpool create -f \
 	msg "Disable snapshots on /tmp"
 	zfs create -o com.sun:auto-snapshot=false  rpool/tmp
 	chmod 1777 /mnt/tmp
-	
 	mkdir /mnt/boot/esp
 	run "mount \"${DSK}-part2\" /mnt/boot/esp"
 	
