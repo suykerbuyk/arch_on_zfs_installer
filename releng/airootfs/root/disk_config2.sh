@@ -50,8 +50,8 @@ use_sgdisk(){
 	run "zpool labelclear "${DSK}-part3" || true"
 	run "zpool labelclear "${DSK}-part4" || true"
 	run "rm -rf /mnt/* "
-
 	run "sgdisk --zap-all $DSK"
+
 	run "sgdisk -a1 -n1:24K:+1000K -t1:EF02 $DSK  #nonfs mbr"
 	run "sgdisk     -n2:1M:+512M   -t2:EF00 $DSK  #EFI/Boot"
 	run "sgdisk     -n3:0:+1G      -t3:BF01 $DSK  #BOOT Pool"
