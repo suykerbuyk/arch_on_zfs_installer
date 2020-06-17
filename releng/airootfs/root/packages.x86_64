@@ -3,6 +3,7 @@ archzfs-linux
 b43-fwcutter
 base
 base-devel
+binutils
 broadcom-wl
 btrfs-progs
 bzip2
@@ -23,8 +24,10 @@ elinks
 ethtool
 exfat-utils
 f2fs-tools
+fakeroot
 fsarchiver
 gawk
+gcc
 git
 gnu-netcat
 go
@@ -49,6 +52,7 @@ lsscsi
 lua
 lvm2
 lz4
+make
 man-db
 man-pages
 mc
@@ -71,6 +75,7 @@ parted
 partimage
 patch
 perl
+pkg-config
 ppp
 pptpclient
 psmisc

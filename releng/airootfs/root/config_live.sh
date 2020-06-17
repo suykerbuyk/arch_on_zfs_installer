@@ -9,3 +9,4 @@ systemctl restart sshd
 if ! mount -l | grep ramdisk > /dev/null; then
 	mount -t tmpfs -o size=8G ramdisk /var/cache/pacman
 fi
+echo "root:seagate" | chpasswd
