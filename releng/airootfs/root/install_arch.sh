@@ -176,19 +176,27 @@ step14_configure_target() {
 	msg "  Configuring locale"
 	sed -i '/#en_US.UTF-8 UTF-8/s/^#//g' ${MNT}/etc/locale.gen
 	echo "LANG=en_US.UTF-8" >${MNT}/etc/locale.conf
-	cat <<- EOF_BOOTSTRAP_SCRIPT >${MNT}/root/boot_strap.sh
+	SCRIPT="/root/boot_strap.sh"
+	cat <<- EOF_BOOTSTRAP_SCRIPT >${MNT}/${SCRIPT}
 		#!/bin/sh
 		locale-gen
 		echo "root:clandestine | chpasswd"
 	EOF_BOOTSTRAP_SCRIPT
-	chmod +x ${MNT}/root/boot_strap.sh
-	arch-chroot ${MNT} "/root/boot_strap.sh"
+	chmod +x ${MNT}/${SCRIPT}
+	arch-chroot ${MNT} "${SCRIPT}"
+	rm -f ${MNT}/${SCRIPT}
 }
 step20_install_grub(){
+	SCRIPT="/root/grub_config.sh"
+	cat <<- EOF_GRUB_CONFIG >${MNT}/${SCRIPT}
+	#!/bin/sh
 	ZPOOL_VDEV_NAME_PATH=1 grub-mkconfig -o /boot/grub/grub.cfg
 	ZPOOL_VDEV_NAME_PATH=1 grub-install --target=x86_64-efi --efi-directory=/boot/esp/ --bootloader-id=GRUB
 	ZPOOL_VDEV_NAME_PATH=1 grub-mkconfig -o /boot/grub/grub.cfg
-
+	EOF_GRUB_CONFIG
+	chmod +x ${MNT}/${SCRIPT}
+	arch-chroot ${MNT} "${SCRIPT}"
+	rm -f ${MNT}/${SCRIPT}
 }
 
 prep_disk() {
@@ -210,4 +218,4 @@ prep_boot_loader() {
 }
 prep_disk
 prep_image
-#prep_boot_loader
+prep_boot_loader

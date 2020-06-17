@@ -13,8 +13,8 @@ chmod 700 /root
 # unset the root password
 passwd -d root
 chmod 755 /etc/ssh
-chmod -R -700 /etc/ssh/authorized_keys
-chown -R -700 /etc/ssh/authorized_keys
+chmod -R 700 /etc/ssh/authorized_keys
+chown -R root:root /etc/ssh/authorized_keys
 
 
 #sed -i 's/#\(PermitRootLogin \).\+/\1yes/' /etc/ssh/sshd_config
