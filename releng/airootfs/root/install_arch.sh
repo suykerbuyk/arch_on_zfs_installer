@@ -1,13 +1,50 @@
 #!/bin/sh
 set -e
+# Define top level disk identifiers
+SGT_MACH2_WWN_PREFIX='wwn-0x6000c500a'
+SGT_EVANS_WWN_PREFIX='wwn-0x5000c500a'
+SGT_TATSU_WWN_PREFIX='wwn-0x5000c5009'
+SGT_NYTRO_WWN_PREFIX='wwn-0x5000c5003'
+# Pick the template we are after
+TGT_DRV="${SGT_NYTRO_WWN_PREFIX}"
 
-DSK=/dev/disk/by-id/scsi-35000c500302dc857
+# Only used for single disk testing.
+#DSK=/dev/disk/by-id/scsi-35000c500302dc857
+
+# The name that makes this node unique
 SYS_BASE_NAME="mgmt"
+
+# Our common mount point for imaging operations.
 MNT="/mnt"
+# Name of the EFI System Partition mount point
+ESP="EFI"
+
+# Names of boot and root pools
+BOOT_POOL="${SYS_BASE_NAME}_bpool"
+ROOT_POOL="${SYS_BASE_NAME}_rpool"
+
+# Partition numbers of various file systems/pools
+EFI_PART="-part1"
+SWAP_PART="-part2"
+BOOT_PART="-part3"
+ROOT_PART="-part4"
+PART_COUNT=4
+
+
+
 
 # Helps with debugging.
 GO_SLOW=0
 DRY_RUN=0
+
+
+# Global vars for partion functions
+DRIVES=""
+BOOT_PARTS=""
+SWAP_PARTS=""
+ROOT_PARTS=""
+DRV_COUNT=0
+
 
 # Simple message output
 msg() {
@@ -31,39 +68,100 @@ run() {
         exit $ret
 }
 
-step01_destroy_what_is() {
-	msg "Destroying and clearing target disk"
-	run "umount /mnt/boot/esp || true"
-	run "zpool destroy -f bpool  || true"
-	run "zpool destroy -f rpool  || true"
-	run "zpool labelclear "${DSK}-part3" || true"
-	run "zpool labelclear "${DSK}-part4" || true"
-	run "rm -rf /mnt/* "
-	run "sgdisk --zap-all $DSK"
-}
-step02_partition_via_parted() {
-	parted --script ${DSK} --align=optimal mklabel gpt mkpart non-fs 0% 2 mkpart primary 2 4096  \
-	       mkpart --align=optimal primary 4096 16384   mkpart --align=optimal primary 16385 3800GB  \
-		set 1 bios_grub on set 2 boot on
-	partprobe $DSK
-}
-step02_partition_via_sgdisk() {
-	msg "Configuring via sgdisk"
-	run "sgdisk -a1 -n1:24K:+1000K -t1:EF02 $DSK  #nonfs mbr"
-	run "sgdisk     -n2:1M:+512M   -t2:EF00 $DSK  #EFI/Boot"
-	run "sgdisk     -n3:0:+1G      -t3:BF01 $DSK  #BOOT Pool"
-	run "sgdisk     -n4:0:0        -t4:BF00 $DSK  #ROOT Pool"
-	run "sgdisk     -u3=R"
-	run "sgdisk     -u4=R"
-	while [[ $(ls /dev/disk/by-id/scsi-35000c500302dc857* | grep part | wc -l) != 4 ]]; do
-		echo "Waiting for partitions to show up"
+wait_for_partitions_to_appear() {
+	# We have four partitions per target device
+	TGT_CNT=$(($DRV_COUNT * $PART_COUNT ))
+	while [ 1 ]
+	do
+		PART_CNT=$(ls /dev/disk/by-id/${TGT_DRV}* | grep part | wc -l)
+		msg "Waiting for all partions to appear"
+		msg "  Have: $PART_CNT Need: $TGT_CNT"
+		if [[ $PART_CNT == $TGT_CNT ]]
+		then
+			msg "   Got them!"
+			return
+		fi
 		sleep 1
 	done
-	run "mkfs.vfat \"${DSK}-part2\""
 }
-step03_create_boot_pool() {
+wait_for_partitions_to_disappear() {
+	# We have four partitions per target device
+	TGT_CNT=$(($DRV_COUNT * $PART_COUNT ))
+	while [ 1 ]
+	do
+		PART_CNT=$(ls /dev/disk/by-id/${TGT_DRV}* | grep part | wc -l)
+		msg "Waiting for all partions to disappear"
+		msg "  Have: $PART_CNT Need: $TGT_CNT"
+		if [[ $PART_CNT == 0 ]]
+		then
+			msg "   Partitions are gone!"
+			return
+		fi
+		sleep 1
+	done
+}
+step01_destroy_what_is() {
+	msg "Destroying and clearing target disk"
+	run "swapoff -a"
+	if [[ ! $(mountpoint  ${MNT}/${ESP} >/dev/null) ]]; then
+		run "umount ${MNT}/${ESP} || true"
+	fi
+	run "zpool destroy -f ${BOOT_POOL}  || true"
+	run "zpool destroy -f ${ROOT_POOL}  || true"
+	msg "  Clearing partitions"
+	for PART in $(ls /dev/disk/by-id/${TGT_DRV}* | grep part)
+	do
+		msg "Wiping clean $PART"
+		run "zpool labelclear -f ${PART} || true"
+		run "wipefs -afq ${PART} || true"
+	done
+	msg "  Clearing disk"
+	for DRV in $(ls /dev/disk/by-id/${TGT_DRV}* | grep -v part)
+	do
+		run "wipefs -afq ${DRV}"
+		run "sgdisk --zap-all $DRV"
+		partprobe ${DRV}
+	done
+	wait_for_partitions_to_disappear
+}
+step02_partition_via_parted() {
+	DRV_COUNT=0
+	for DEV in $(ls /dev/disk/by-id/${TGT_DRV}* | grep -v part)
+	do
+		msg "Partitioning $DEV"
+		parted --script ${DEV} \
+			--align=optimal mklabel gpt \
+			mkpart non-fs 0% 2  \
+			mkpart primary 2 4096  \
+			mkpart --align=optimal primary 4096 16384  \
+			mkpart --align=optimal primary 16385 3800GB  \
+			set 1 bios_grub on set 2 boot on
+		# Wake the kernel up to the changes on disk
+		partprobe $DEV
+		FINISHED=$(echo ${DEV} |awk -F '/' '{print $5}')
+		DRIVES="$DRIVES $FINISHED"
+		export BOOT_PARTS="$BOOT_PARTS /dev/disk/by-id/${FINISHED}${SWAP_PART}"
+		export SWAP_PARTS="$SWAP_PARTS /dev/disk/by-id/${FINISHED}${BOOT_PART}"
+		export ROOT_PARTS="$ROOT_PARTS /dev/disk/by-id/${FINISHED}${ROOT_PART}"
+		DRV_COUNT=$(expr $DRV_COUNT + 1 )
+	done
+	echo "DRIVES: $DRIVES"
+	echo "DRV_COUNT: $DRV_COUNT"
+	wait_for_partitions_to_appear
+}
+step03_create_root_pool() {
+	msg "Creating ROOT pool"
+	run "zpool create -f \
+    -o ashift=12 \
+    -O acltype=posixacl -O canmount=off -O compression=lz4 \
+    -O dnodesize=auto -O normalization=formD -O relatime=on \
+    -O xattr=sa -O mountpoint=/ -R /mnt \
+    ${ROOT_POOL} ${ROOT_PARTS}"
+}
+step04_create_boot_pool() {
 	msg "Creating BOOT pool"
-	zpool create -f \
+	#ZPOOL_IMPORT_PATH=/dev/disk/by-id/ zpool create -f \
+	run "zpool create -f \
     -o ashift=12 -d \
     -o feature@async_destroy=enabled \
     -o feature@bookmarks=enabled \
@@ -80,54 +178,83 @@ step03_create_boot_pool() {
     -O acltype=posixacl -O canmount=off -O compression=lz4 \
     -O devices=off -O normalization=formD -O relatime=on -O xattr=sa \
     -O mountpoint=/boot -R /mnt \
-    bpool "${DSK}-part3"
+    ${BOOT_POOL} ${BOOT_PARTS}"
 }
-step04_create_boot_pool() {
-	msg "Creating ROOT pool"
-	zpool create -f \
-    -o ashift=12 \
-    -O acltype=posixacl -O canmount=off -O compression=lz4 \
-    -O dnodesize=auto -O normalization=formD -O relatime=on \
-    -O xattr=sa -O mountpoint=/ -R /mnt \
-    rpool ${DSK}-part4
+step05_create_swap() {
+	msg "Making swap devices"
+	truncate -s 0 etc_fstab
+	IFS_SAVE="${IFS}"
+	IFS=' '
+	read -a STRARR <<< "$SWAP_PARTS"
+	for (( n=0; n < ${#STRARR[*]}; n++))
+	do
+		SWP_TGT="${STRARR[n]}"
+		SWP_LABEL="${SYS_BASE_NAME}_swp${n}"
+		msg "Make $SWP_LABEL on $SWP_TGT"
+		run "mkswap -L $SWP_LABEL $SWP_TGT"
+		echo "LABEL=$SWP_LABEL  none  swap defaults,pri=10,nofail  0  0">>etc_fstab
+	done
+	IFS="${IFS_SAVE}"
+	TGT_CNT=$(( $DRV_COUNT ))
+	while [ 1 ]
+	do
+		PART_CNT=$(ls /dev/disk/by-id/${TGT_DRV}*${SWAP_PART} | wc -l)
+		msg "Waiting for all $TGT_CNT swap partions to appear"
+		msg "  Have: $PART_CNT Swap partitions. Need: $TGT_CNT"
+		if [[ $PART_CNT == $TGT_CNT ]]
+		then
+			msg "   Got them!"
+			return
+		fi
+		sleep 1
+	done
+	msg "Swap fstab entries cached in local file 'etc_fstab'"
+	cat etc_fstab
 }
-step05_create_filesystems(){
+step06_create_filesystems(){
 	msg "Creating ZFS file system containers"
-	run "zfs create -o canmount=off -o mountpoint=none rpool/ROOT"
-	run "zfs create -o canmount=noauto -o mountpoint=/ rpool/ROOT/${SYS_BASE_NAME}"
-	run "zfs mount rpool/ROOT/${SYS_BASE_NAME}"
+	run "zfs create -o canmount=off -o mountpoint=none ${ROOT_POOL}/ROOT"
+	run "zfs create -o canmount=noauto -o mountpoint=/ ${ROOT_POOL}/ROOT/${SYS_BASE_NAME}"
+	run "zfs mount ${ROOT_POOL}/ROOT/${SYS_BASE_NAME}"
 
-	run "zfs create -o canmount=off -o mountpoint=none bpool/BOOT"
-	run "zfs create -o mountpoint=/boot bpool/BOOT/${SYS_BASE_NAME}"
+	run "zfs create -o canmount=off -o mountpoint=none ${BOOT_POOL}/BOOT"
+	run "zfs create -o mountpoint=/boot ${BOOT_POOL}/BOOT/${SYS_BASE_NAME}"
 	# They seem to be automounting anway
 	#run "zfs mount bpool/BOOT/${SYS_BASE_NAME}"
 
-	run "zfs create                                 rpool/home"
-	run "zfs create                                 rpool/etc"
-	run "zfs create -o mountpoint=/root             rpool/home/root"
+	run "zfs create                                 ${ROOT_POOL}/home"
+	run "zfs create                                 ${ROOT_POOL}/etc"
+	run "zfs create -o mountpoint=/root             ${ROOT_POOL}/home/root"
 	msg "Create container for /var and /var/lib"
-	run "zfs create -o canmount=off                 rpool/var"
-	run "zfs create -o canmount=off                 rpool/var/lib"
-	run "zfs create                                 rpool/var/log"
-	run "zfs create                                 rpool/var/spool"
+	run "zfs create -o canmount=off                 ${ROOT_POOL}/var"
+	run "zfs create -o canmount=off                 ${ROOT_POOL}/var/lib"
+	run "zfs create                                 ${ROOT_POOL}/var/log"
+	run "zfs create                                 ${ROOT_POOL}/var/spool"
 	msg "Skip snapshots for /var/cache and /var/temp"
-	run "zfs create -o com.sun:auto-snapshot=false  rpool/var/cache"
-	run "zfs create -o com.sun:auto-snapshot=false  rpool/var/tmp"
+	run "zfs create -o com.sun:auto-snapshot=false  ${ROOT_POOL}/var/cache"
+	run "zfs create -o com.sun:auto-snapshot=false  ${ROOT_POOL}/var/tmp"
 	run "chmod 1777 /mnt/var/tmp"
-	run "zfs create                                 rpool/opt"
-	run "zfs create                                 rpool/opt/stx"
-	run "zfs create                                 rpool/srv"
+	run "zfs create                                 ${ROOT_POOL}/opt"
+	run "zfs create                                 ${ROOT_POOL}/opt/stx"
+	run "zfs create                                 ${ROOT_POOL}/srv"
 	msg "Create contianer for /usr"
-	run "zfs create -o canmount=off                 rpool/usr"
-	run "zfs create                                 rpool/usr/local"
-	run "zfs create                                 rpool/var/www"
+	run "zfs create -o canmount=off                 ${ROOT_POOL}/usr"
+	run "zfs create                                 ${ROOT_POOL}/usr/local"
+	run "zfs create                                 ${ROOT_POOL}/var/www"
 	msg "Don't snapshot nfs lock dir"
-	run "zfs create -o com.sun:auto-snapshot=false  rpool/var/lib/nfs"
+	run "zfs create -o com.sun:auto-snapshot=false  ${ROOT_POOL}/var/lib/nfs"
 	msg "Disable snapshots on /tmp"
-	zfs create -o com.sun:auto-snapshot=false  rpool/tmp
+	zfs create -o com.sun:auto-snapshot=false  ${ROOT_POOL}/tmp
 	chmod 1777 /mnt/tmp
-	mkdir /mnt/boot/esp
-	run "mount \"${DSK}-part2\" /mnt/boot/esp"
+	mkdir ${MNT}/${ESP}
+	FIRST_EFI_PART=$(ls /dev/disk/by-id/${TGT_DRV}*${EFI_PART} | head -1)
+	msg "Formatting all EFI partitions"
+	for PART in $(ls /dev/disk/by-id/${TGT_DRV}*${EFI_PART})
+	do
+		run "mkfs.vfat ${PART}"
+	done
+	msg "Mounting first EFI partition"
+	run "mount ${FIRST_EFI_PART} ${MNT}/${ESP}"
 }
 
 step11_set_time() {
@@ -201,11 +328,11 @@ step20_install_grub(){
 
 prep_disk() {
 	step01_destroy_what_is
-	#step02_partition_via_parted
-	step02_partition_via_sgdisk
-	step03_create_boot_pool
+	step02_partition_via_parted
+	step03_create_root_pool
 	step04_create_boot_pool
-	step05_create_filesystems
+	step05_create_swap
+	step06_create_filesystems
 }
 prep_image() {
 	step11_set_time
@@ -218,4 +345,4 @@ prep_boot_loader() {
 }
 prep_disk
 prep_image
-prep_boot_loader
+#prep_boot_loader
