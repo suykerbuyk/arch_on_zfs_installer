@@ -1,4 +1,9 @@
 arch-install-scripts
+linux=5.7.2.arch1-1
+linux-atm
+linux-firmware
+linux-headers=5.7.2.arch1-1
+archzfs-linux
 b43-fwcutter
 broadcom-wl
 btrfs-progs
@@ -31,10 +36,6 @@ irssi
 iwd
 jfsutils
 lftp
-linux-atm
-linux-firmware
-linux-headers
-archzfs-linux
 lsscsi
 lvm2
 man-db
@@ -44,6 +45,7 @@ mdadm
 mtools
 nano
 ndisc6
+neovim
 netctl
 nfs-utils
 nilfs-utils
@@ -74,7 +76,6 @@ usb_modeswitch
 usbutils
 vi
 vim-minimal
-neovim
 vpnc
 wget
 wireless-regdb

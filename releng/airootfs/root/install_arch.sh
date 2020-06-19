@@ -17,7 +17,7 @@ SYS_BASE_NAME="mgmt"
 # Our common mount point for imaging operations.
 MNT="/mnt"
 # Name of the EFI System Partition mount point
-ESP="EFI"
+ESP="esp"
 
 # Names of boot and root pools
 BOOT_POOL="${SYS_BASE_NAME}_bpool"
@@ -263,9 +263,9 @@ step11_set_time() {
 	run "hwclock --systohc"
 }
 step12_create_pacman_cache() {
-	if ! mount -l | grep ramdisk > /dev/null; then
+	if ! mount -l | grep pacman_cache > /dev/null; then
 		msg "Creating Package Cache"
-		run "mount -t tmpfs -o size=8G ramdisk /var/cache/pacman"
+		run "mount -t tmpfs -o size=8G pacman_cache /var/cache/pacman"
 	else
 		msg "Reusing Package Cache"
 	fi
@@ -274,7 +274,7 @@ step12_create_pacman_cache() {
 step13_run_pacstrap() {
 	msg "Running pacstrap"
 	set -o errexit
-	run "pacstrap -c ${MNT} - <packages.x86_64"
+	run "pacstrap -C /root/pacman.conf -c ${MNT} - <packages.x86_64"
 	set +o errexit
 }
 step14_configure_target() {
@@ -315,10 +315,10 @@ step14_configure_target() {
 }
 step20_install_grub(){
 	SCRIPT="/root/grub_config.sh"
+	sed -i 'x/#GRUB_TERMINAL_OUTPUT=console/GRUB_TERMINAL_OUTPUT=console' ${MNT}/etc/default/grub 
 	cat <<- EOF_GRUB_CONFIG >${MNT}/${SCRIPT}
 	#!/bin/sh
-	ZPOOL_VDEV_NAME_PATH=1 grub-mkconfig -o /boot/grub/grub.cfg
-	ZPOOL_VDEV_NAME_PATH=1 grub-install --target=x86_64-efi --efi-directory=/boot/esp/ --bootloader-id=GRUB
+	ZPOOL_VDEV_NAME_PATH=1 grub-install --target=x86_64-efi --efi-directory=${ESP} --bootloader-id=GRUB
 	ZPOOL_VDEV_NAME_PATH=1 grub-mkconfig -o /boot/grub/grub.cfg
 	EOF_GRUB_CONFIG
 	chmod +x ${MNT}/${SCRIPT}
@@ -345,4 +345,4 @@ prep_boot_loader() {
 }
 prep_disk
 prep_image
-#prep_boot_loader
+prep_boot_loader

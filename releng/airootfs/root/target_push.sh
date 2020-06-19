@@ -7,6 +7,7 @@ rsync -avr ./etc-ss* \
 	install_arch.sh  \
 	zap_disk_config.sh \
 	packages.x86_64 \
+	pacman.conf \
 	root@mgmt:
 ssh root@mgmt /root/config_live.sh
 rsync -avr ~/cache_pacman/ root@mgmt:/var/cache/pacman/
